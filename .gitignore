@@ -1,1 +1,19 @@
+# Copilot
 .copilot
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+**/.venv/
+
+# Environment
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# Deploy
+deploy.zip
