@@ -144,7 +144,7 @@ resource plan 'Microsoft.Web/serverfarms@2023-12-01' = if (deployAppService) {
   name: '${prefix}-plan'
   location: location
   kind: 'linux'
-  sku: { name: 'F1' }
+  sku: { name: 'B1' }
   properties: { reserved: true }
 }
 
