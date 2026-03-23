@@ -17,3 +17,6 @@ venv/
 
 # Deploy
 deploy.zip
+
+# Azure Functions
+local.settings.json

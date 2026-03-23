@@ -1,13 +1,26 @@
 # RAG + MCP Workshop
 
-Azure AI Search × Responses API による最小限の RAG 構成サンプルです。
+Azure AI Search × Responses API による RAG 構成と、MCP（Model Context Protocol）を使った AI エージェントパターンのサンプルです。
 
 ## 構成図
 
 ```
+[RAG モード]
 ユーザー → Streamlit (App Service)
               ├→ Azure AI Search（ハイブリッド検索 + セマンティックリランカー）
               └→ Microsoft Foundry（Responses API で回答生成）
+
+[AI エージェント + MCP モード — マルチ MCP サーバー]
+ユーザー → Streamlit → Responses API（function tools 付き）
+                            ↓ tool call
+                       MCP Client (mcp SDK)
+                       ┌────────┴────────┐
+          Azure Functions MCP Server    Microsoft Learn MCP
+          (社内ドキュメント検索)          (公式ドキュメント検索)
+                ↓                             ↓
+          Azure AI Search           learn.microsoft.com/api/mcp
+                            ↑ tool results
+                       Responses API（続行）→ ユーザー
 
 Blob Storage → [インデクサー] → Azure AI Search
                (チャンク分割 + ベクトル化)
@@ -17,14 +30,19 @@ Blob Storage → [インデクサー] → Azure AI Search
 
 ```
 app/
-  app.py                Streamlit RAG アプリ（メイン）
+  app.py                Streamlit アプリ（RAG / Agent+MCP 切替対応）
   requirements.txt      アプリ用パッケージ
+mcp/
+  function_app.py       Azure Functions MCP サーバー（検索ツール）
+  host.json             Functions + MCP 拡張設定
+  requirements.txt      MCP サーバー用パッケージ
+  local.settings.json   ローカル開発用設定
 scripts/
   create_index.py       AI Search インデックス・インデクサー作成
   upload_docs.py        Blob Storage へドキュメントアップロード
   deploy.sh             App Service デプロイスクリプト
   requirements.txt      スクリプト用パッケージ
-data/                   サンプルドキュメント
+data/                   サンプル社内ドキュメント（Azure 運用ガイドライン等）
 infra/
   main.bicep            Azure リソース一括デプロイ（Bicep）
   main.bicepparam       パラメータファイル
@@ -35,6 +53,7 @@ infra/
 - Python 3.11+
 - Azure CLI（`az login` 済み）
 - Azure サブスクリプション（Contributor 権限）
+- Azure Functions Core Tools v4+（MCP サーバーのローカル実行に必要）
 
 ## 1. インフラデプロイ
 
@@ -74,7 +93,7 @@ python upload_docs.py
 python create_index.py
 ```
 
-## 3. アプリ起動
+## 3. アプリ起動（RAG モード）
 
 ```bash
 # 仮想環境の作成・有効化
@@ -87,11 +106,40 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-## 4. App Service へデプロイ
+サイドバーで「RAG」モードを選択すると、AI Search への直接検索 → Responses API による回答生成が行われます。
 
-### a. Bicep でデプロイする場合（推奨）
+## 3.5. MCP サーバー起動（Agent + MCP モード）
 
-インフラデプロイ時に `deployAppService=true` を指定すると、App Service Plan / Web App / RBAC が一括作成されます。
+Agent + MCP モードでは以下 2 つの MCP サーバーを利用します。
+
+| MCP サーバー | 用途 | エンドポイント |
+|---|---|---|
+| Azure Functions（自作） | 社内ドキュメント検索 | `http://localhost:7071/runtime/webhooks/mcp/mcp`（ローカル）<br>Azure Functions URL（デプロイ後） |
+| Microsoft Learn（外部） | 公式ドキュメント検索 | `https://learn.microsoft.com/api/mcp`（認証不要） |
+
+### Azure Functions MCP サーバーのローカル起動
+
+```bash
+# 仮想環境の作成・有効化
+cd mcp
+python -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+
+# local.settings.json に環境変数を設定
+# AZURE_SEARCH_ENDPOINT, AZURE_SEARCH_INDEX を .env と同じ値に設定
+
+# MCP サーバー起動
+func start
+```
+
+Microsoft Learn MCP はパブリックエンドポイントのため、起動不要です。
+
+Streamlit アプリのサイドバーで「AI エージェント + MCP」を選択すると、Responses API がエージェントとして両方の MCP ツールを呼び出し、社内ルールと公式ドキュメントを組み合わせて回答を生成します。
+
+## 4. App Service / Functions へデプロイ
+
+インフラデプロイ時にパラメータを指定すると、App Service や Azure Functions が一括作成されます。
 
 ```bash
 az deployment group create \
@@ -99,66 +147,23 @@ az deployment group create \
   -f infra/main.bicep \
   -p prefix=ragws \
   -p foundryLocation=eastus2 \
-  -p deployAppService=true
+  -p deployAppService=true \
+  -p deployFunctions=true
 ```
 
-> **注意:** App Service には VM クォータが必要です。リージョンによってはクォータ申請が必要な場合があります。
-
-### b. CLI で個別にデプロイする場合
-
-Bicep でクォータ不足になった場合など、別リージョンに CLI で作成できます。
+アプリコードのデプロイは `scripts/deploy.sh` で行います。
 
 ```bash
-# App Service Plan 作成
-az appservice plan create \
-  --name <PREFIX>-plan \
-  --resource-group <RG> \
-  --location <LOCATION> \
-  --is-linux \
-  --sku B1
-
-# Web App 作成（マネージドID 有効）
-az webapp create \
-  --name <PREFIX>-app \
-  --resource-group <RG> \
-  --plan <PREFIX>-plan \
-  --runtime "PYTHON:3.11" \
-  --assign-identity '[system]'
-
-# 環境変数を設定
-az webapp config appsettings set \
-  --name <PREFIX>-app \
-  --resource-group <RG> \
-  --settings \
-    AZURE_OPENAI_ENDPOINT="https://<PREFIX>-ai.cognitiveservices.azure.com/" \
-    AZURE_OPENAI_MODEL="gpt-4o" \
-    AZURE_OPENAI_EMBEDDING_MODEL="text-embedding-3-small" \
-    AZURE_SEARCH_ENDPOINT="https://<PREFIX>-search.search.windows.net" \
-    AZURE_SEARCH_INDEX="rag-index"
-
-# RBAC 付与（マネージドID のプリンシパルIDを指定）
-APP_PRINCIPAL_ID=$(az webapp identity show -n <PREFIX>-app -g <RG> --query principalId -o tsv)
-
-az role assignment create \
-  --assignee-object-id "$APP_PRINCIPAL_ID" \
-  --assignee-principal-type ServicePrincipal \
-  --role "Cognitive Services OpenAI User" \
-  --scope $(az cognitiveservices account show -n <PREFIX>-ai -g <RG> --query id -o tsv)
-
-az role assignment create \
-  --assignee-object-id "$APP_PRINCIPAL_ID" \
-  --assignee-principal-type ServicePrincipal \
-  --role "Search Index Data Reader" \
-  --scope $(az search service show -n <PREFIX>-search -g <RG> --query id -o tsv)
-```
-
-### c. アプリコードのデプロイ
-
-```bash
-# 環境変数を設定して deploy.sh を実行
-export AZURE_RESOURCE_GROUP=<RG>
-export APP_SERVICE_NAME=<PREFIX>-app
+export AZURE_RESOURCE_GROUP=rg-ragworkshop
+export APP_SERVICE_NAME=ragws-app
 bash scripts/deploy.sh
+```
+
+Azure Functions（MCP サーバー）のデプロイ:
+
+```bash
+cd mcp
+func azure functionapp publish ragws-func
 ```
 
 ## 認証
@@ -169,10 +174,17 @@ bash scripts/deploy.sh
 |------|----------|
 | ローカル開発 | `az login` の資格情報 |
 | Azure App Service | システム割り当てマネージド ID |
+| Azure Functions | システム割り当てマネージド ID |
 
 ## ワークショップテーマ
 
 | テーマ | 内容 |
 |--------|------|
-| ① RAG 基盤 | 本サンプルで実装。検索 → プロンプト組立 → 回答生成の流れを理解 |
-| ② MCP 連携 | Azure Functions で MCP サーバーを実装し、エージェントパターンを理解（後日追加） |
+| ① RAG 基盤 | 検索 → プロンプト組立 → 回答生成の流れを理解。Streamlit の「RAG」モードで体験 |
+| ② MCP 連携 | Azure Functions で自作 MCP サーバーを実装し、外部 MCP（Microsoft Learn）と組み合わせたマルチ MCP エージェントパターンを理解。「AI エージェント + MCP」モードで体験 |
+
+### ② MCP 連携の質問例
+
+- **社内ドキュメント検索**: 「Azure リソースの命名規則を教えて」「セキュリティポリシーの概要は？」
+- **公式ドキュメント検索**: 「Azure Functions の Python でのデプロイ方法は？」
+- **両方を横断**: 「社内の命名規則と Azure の公式推奨を比較して」

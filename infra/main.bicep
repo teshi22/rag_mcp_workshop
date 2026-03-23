@@ -25,6 +25,9 @@ param userPrincipalId string = ''
 @description('App Service をデプロイするか（VM クォータが必要）')
 param deployAppService bool = false
 
+@description('Azure Functions (MCP サーバー) をデプロイするか')
+param deployFunctions bool = false
+
 // ---- モデル設定 ----
 param chatModelName string = 'gpt-4o'
 param chatModelVersion string = '2024-08-06'
@@ -163,6 +166,7 @@ resource app 'Microsoft.Web/sites@2023-12-01' = if (deployAppService) {
         { name: 'AZURE_OPENAI_EMBEDDING_MODEL', value: embeddingModelName }
         { name: 'AZURE_SEARCH_ENDPOINT', value: 'https://${search.name}.search.windows.net' }
         { name: 'AZURE_SEARCH_INDEX', value: 'rag-index' }
+        { name: 'MCP_SERVER_URL', value: deployFunctions ? 'https://${func.properties.defaultHostName}/runtime/webhooks/mcp/mcp' : '' }
       ]
     }
   }
@@ -233,6 +237,62 @@ resource appToSearch 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (
 }
 
 // ============================================================
+// Azure Functions — MCP サーバー（deployFunctions=true 時のみ）
+// ============================================================
+var funcStorageName = replace('${prefix}funcstor', '-', '')
+
+resource funcStorage 'Microsoft.Storage/storageAccounts@2023-05-01' = if (deployFunctions) {
+  name: funcStorageName
+  location: location
+  sku: { name: 'Standard_LRS' }
+  kind: 'StorageV2'
+  properties: { accessTier: 'Hot' }
+}
+
+resource funcPlan 'Microsoft.Web/serverfarms@2023-12-01' = if (deployFunctions) {
+  name: '${prefix}-func-plan'
+  location: location
+  kind: 'linux'
+  sku: { name: 'Y1', tier: 'Dynamic' }
+  properties: { reserved: true }
+}
+
+resource func 'Microsoft.Web/sites@2023-12-01' = if (deployFunctions) {
+  name: '${prefix}-func'
+  location: location
+  kind: 'functionapp,linux'
+  identity: { type: 'SystemAssigned' }
+  properties: {
+    serverFarmId: funcPlan.id
+    siteConfig: {
+      linuxFxVersion: 'PYTHON|3.11'
+      appSettings: [
+        { name: 'AzureWebJobsStorage', value: 'DefaultEndpointsProtocol=https;AccountName=${funcStorageName};EndpointSuffix=${environment().suffixes.storage};AccountKey=${deployFunctions ? funcStorage.listKeys().keys[0].value : ''}' }
+        { name: 'FUNCTIONS_EXTENSION_VERSION', value: '~4' }
+        { name: 'FUNCTIONS_WORKER_RUNTIME', value: 'python' }
+        { name: 'AZURE_SEARCH_ENDPOINT', value: 'https://${search.name}.search.windows.net' }
+        { name: 'AZURE_SEARCH_INDEX', value: 'rag-index' }
+      ]
+    }
+  }
+}
+
+// ============================================================
+// RBAC: Azure Functions → 他サービス（deployFunctions=true 時のみ）
+// ============================================================
+
+// Functions → AI Search: Index Data Reader（検索クエリ）
+resource funcToSearch 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployFunctions) {
+  name: guid('${prefix}-func', search.id, roles.searchIndexDataReader)
+  scope: search
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roles.searchIndexDataReader)
+    principalId: deployFunctions ? func.identity.principalId : ''
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// ============================================================
 // RBAC: ローカル開発ユーザー（userPrincipalId 指定時のみ）
 // ============================================================
 
@@ -298,5 +358,7 @@ output foundryEndpoint string = foundry.properties.endpoint
 output searchEndpoint string = 'https://${search.name}.search.windows.net'
 output storageAccountName string = storage.name
 output appUrl string = deployAppService ? 'https://${app.properties.defaultHostName}' : 'N/A (App Service not deployed)'
+output funcUrl string = deployFunctions ? 'https://${func.properties.defaultHostName}' : 'N/A (Functions not deployed)'
+output mcpEndpoint string = deployFunctions ? 'https://${func.properties.defaultHostName}/runtime/webhooks/mcp/mcp' : 'N/A'
 output resourceGroup string = resourceGroup().name
 output subscriptionId string = subscription().subscriptionId
