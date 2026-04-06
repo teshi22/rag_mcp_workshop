@@ -7,6 +7,7 @@ __pycache__/
 .venv/
 venv/
 **/.venv/
+.python_packages/
 
 # Environment
 .env
@@ -20,3 +21,6 @@ deploy.zip
 
 # Azure Functions
 local.settings.json
+
+# Bicep compiled output
+main.json
