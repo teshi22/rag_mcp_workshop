@@ -1,5 +1,6 @@
 # Copilot
 .copilot
+.github
 
 # Python
 __pycache__/
