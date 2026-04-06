@@ -1,42 +1,84 @@
 #!/bin/bash
-# 01-rag: App Service デプロイスクリプト
+# 01-rag: 受講生ごとの App Service デプロイスクリプト
 # 使い方:
-#   export AZURE_RESOURCE_GROUP=rg-ragworkshop
-#   export PREFIX=ragws
 #   bash 01-rag/deploy.sh
+# .env に必要な値がすべて設定されていること
 
 set -euo pipefail
 
-RESOURCE_GROUP="${AZURE_RESOURCE_GROUP:?環境変数 AZURE_RESOURCE_GROUP を設定してください}"
-PREFIX="${PREFIX:?環境変数 PREFIX を設定してください}"
-APP_NAME="${PREFIX}-app"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+ENV_FILE="$REPO_ROOT/.env"
 
-echo "🏗️  App Service インフラをデプロイ..."
-az deployment group create \
-    --resource-group "$RESOURCE_GROUP" \
-    --template-file "$REPO_ROOT/00-setup/infra/main.bicep" \
-    --parameters prefix="$PREFIX" \
-    --parameters deployAppService=true \
-    --query "properties.outputs" \
-    --output table
+if [ ! -f "$ENV_FILE" ]; then
+    echo "❌ .env ファイルが見つかりません: $ENV_FILE"
+    exit 1
+fi
 
+# .env を読み込み
+set -a
+source "$ENV_FILE"
+set +a
+
+# 必須変数チェック
+: "${AZURE_RESOURCE_GROUP:?❌ .env に AZURE_RESOURCE_GROUP を設定してください}"
+: "${PREFIX:?❌ .env に PREFIX を設定してください}"
+: "${STUDENT_ID:?❌ .env に STUDENT_ID を設定してください}"
+: "${AZURE_OPENAI_ENDPOINT:?❌ .env に AZURE_OPENAI_ENDPOINT を設定してください}"
+: "${AZURE_SEARCH_ENDPOINT:?❌ .env に AZURE_SEARCH_ENDPOINT を設定してください}"
+
+APP_NAME="${PREFIX}-${STUDENT_ID}-app"
+PLAN_NAME="${PREFIX}-plan"
+
+echo "=== デプロイ設定 ==="
+echo "RESOURCE_GROUP: $AZURE_RESOURCE_GROUP"
+echo "APP_NAME:       $APP_NAME"
+echo "SEARCH_INDEX:   ${AZURE_SEARCH_INDEX:-rag-index}"
 echo ""
+
+echo "🏗️  App Service Plan を作成（既存の場合はスキップ）..."
+az appservice plan create \
+    --resource-group "$AZURE_RESOURCE_GROUP" \
+    --name "$PLAN_NAME" \
+    --sku B1 \
+    --is-linux \
+    --output none 2>/dev/null || true
+
+echo "🌐 Web App '$APP_NAME' を作成..."
+az webapp create \
+    --resource-group "$AZURE_RESOURCE_GROUP" \
+    --plan "$PLAN_NAME" \
+    --name "$APP_NAME" \
+    --runtime "PYTHON:3.11" \
+    --output none
+
+echo "⚙️  アプリ設定を反映..."
+az webapp config appsettings set \
+    --resource-group "$AZURE_RESOURCE_GROUP" \
+    --name "$APP_NAME" \
+    --settings \
+        AZURE_OPENAI_ENDPOINT="$AZURE_OPENAI_ENDPOINT" \
+        AZURE_OPENAI_MODEL="${AZURE_OPENAI_MODEL:-gpt-4.1}" \
+        AZURE_OPENAI_EMBEDDING_MODEL="${AZURE_OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}" \
+        AZURE_SEARCH_ENDPOINT="$AZURE_SEARCH_ENDPOINT" \
+        AZURE_SEARCH_INDEX="${AZURE_SEARCH_INDEX:-rag-index}" \
+    --output none
+
 echo "📦 アプリコードをデプロイ..."
 cd "$SCRIPT_DIR"
-zip -r /tmp/rag-app-deploy.zip app/ -x "*.pyc" "__pycache__/*" ".env" "*.venv*"
+zip -rq /tmp/rag-app-deploy.zip app/ -x "*.pyc" "__pycache__/*" ".env" "*.venv*"
 
 az webapp deploy \
-    --resource-group "$RESOURCE_GROUP" \
+    --resource-group "$AZURE_RESOURCE_GROUP" \
     --name "$APP_NAME" \
     --src-path /tmp/rag-app-deploy.zip \
     --type zip
 
 az webapp config set \
-    --resource-group "$RESOURCE_GROUP" \
+    --resource-group "$AZURE_RESOURCE_GROUP" \
     --name "$APP_NAME" \
-    --startup-file "pip install -r app/requirements.txt && python -m streamlit run app/app.py --server.port 8000 --server.address 0.0.0.0"
+    --startup-file "pip install -r app/requirements.txt && python -m streamlit run app/app.py --server.port 8000 --server.address 0.0.0.0" \
+    --output none
 
 rm -f /tmp/rag-app-deploy.zip
 

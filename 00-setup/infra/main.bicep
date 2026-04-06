@@ -29,8 +29,8 @@ param deployAppService bool = false
 param deployFunctions bool = false
 
 // ---- モデル設定 ----
-param chatModelName string = 'gpt-4o'
-param chatModelVersion string = '2024-08-06'
+param chatModelName string = 'gpt-4.1'
+param chatModelVersion string = '2025-04-14'
 param embeddingModelName string = 'text-embedding-3-small'
 param embeddingModelVersion string = '1'
 
