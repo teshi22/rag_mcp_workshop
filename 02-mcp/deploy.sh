@@ -14,7 +14,7 @@ FUNC_NAME="${PREFIX}-func"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-echo "🏗️  App Service + Functions インフラをデプロイ..."
+echo "🏗️  Azure Functions インフラを追加デプロイ..."
 az deployment group create \
     --resource-group "$RESOURCE_GROUP" \
     --template-file "$REPO_ROOT/00-setup/infra/main.bicep" \
@@ -25,12 +25,12 @@ az deployment group create \
     --output table
 
 echo ""
-echo "📦 Azure Functions (MCP サーバー) をデプロイ..."
+echo "📦 MCP サーバーを Azure Functions にデプロイ..."
 cd "$SCRIPT_DIR/mcp"
 func azure functionapp publish "$FUNC_NAME"
 
 echo ""
-echo "📦 アプリコードをデプロイ..."
+echo "📦 アプリコードを MCP 対応版に更新..."
 cd "$SCRIPT_DIR"
 zip -r /tmp/mcp-app-deploy.zip app/ -x "*.pyc" "__pycache__/*" ".env" "*.venv*"
 

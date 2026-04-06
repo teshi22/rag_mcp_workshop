@@ -1,10 +1,9 @@
 # 00 — 準備編
 
-Azure リソースのデプロイとデータのセットアップを行います。
+Azure リソースのデプロイを行います。
 
 ## 前提条件
 
-- Python 3.11+
 - Azure CLI（`az login` 済み）
 - Azure サブスクリプション（Contributor 権限）
 
@@ -30,21 +29,6 @@ az deployment group create \
 ```bash
 cp .env.sample .env
 # デプロイ出力を参考に .env を編集
-```
-
-## 3. ドキュメントアップロード & インデックス作成
-
-```bash
-cd 00-setup/scripts
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# ドキュメントをアップロード
-python upload_docs.py
-
-# AI Search インデックス作成
-python create_index.py
 ```
 
 ## 作成されるリソース

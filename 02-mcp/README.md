@@ -1,6 +1,7 @@
 # 02 — MCP 編
 
-AI エージェント + MCP（Model Context Protocol）で、社内ドキュメントと Microsoft 公式ドキュメントの両方を活用するパターンを体験します。
+01-rag のアプリを MCP（Model Context Protocol）対応に更新し、Azure Functions で MCP サーバーをデプロイします。
+社内ドキュメントと Microsoft 公式ドキュメントの両方を活用するエージェントパターンを体験します。
 
 ## 構成
 
@@ -59,9 +60,9 @@ bash 02-mcp/deploy.sh
 
 `deploy.sh` は以下を実行します:
 
-1. App Service + Functions のインフラを追加デプロイ
-2. Azure Functions に MCP サーバーコードをデプロイ
-3. App Service にアプリコードを再デプロイ（MCP 対応版）
+1. Azure Functions のインフラを追加デプロイ
+2. MCP サーバーコードを Azure Functions にデプロイ
+3. アプリコードを MCP 対応版に更新デプロイ
 
 ## MCP サーバー一覧
 

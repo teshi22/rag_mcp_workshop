@@ -6,9 +6,9 @@ Azure AI Search × Responses API による RAG 構成と、MCP（Model Context P
 
 | # | フォルダ | 内容 |
 |---|---------|------|
-| 0 | [00-setup](./00-setup/) | **準備編** — Azure リソースのデプロイ、ドキュメントアップロード、インデックス作成 |
-| 1 | [01-rag](./01-rag/) | **通常 RAG 編** — AI Search × Responses API による検索拡張生成。App Service へのデプロイも実施 |
-| 2 | [02-mcp](./02-mcp/) | **MCP 編** — Azure Functions で MCP サーバーを構築し、マルチ MCP エージェントパターンを体験 |
+| 0 | [00-setup](./00-setup/) | **準備編** — Azure リソースのデプロイ、環境変数の設定 |
+| 1 | [01-rag](./01-rag/) | **通常 RAG 編** — インデックス作成、RAG アプリの起動・App Service デプロイ |
+| 2 | [02-mcp](./02-mcp/) | **MCP 編** — アプリを MCP 対応に更新、Azure Functions で MCP サーバーをデプロイ |
 
 ## 全体構成図
 
