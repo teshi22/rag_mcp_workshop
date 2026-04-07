@@ -178,7 +178,7 @@ resource app 'Microsoft.Web/sites@2023-12-01' = if (deployAppService) {
 var roles = {
   storageBlobDataReader: '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1'
   storageBlobDataContributor: 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
-  cognitiveServicesOpenAIUser: '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
+  azureAIUser: '53ca6127-db72-4b80-b1b0-d745d6d5456d'
   searchIndexDataReader: '1407120a-92aa-4202-b7e9-c0e197c71c8f'
   searchServiceContributor: '7ca78c08-252a-4471-8644-bb5ff32d4ba0'
   searchIndexDataContributor: '8ebe5a00-799e-43f5-93ac-243d3dce84a7'
@@ -201,10 +201,10 @@ resource searchToStorage 'Microsoft.Authorization/roleAssignments@2022-04-01' = 
 
 // AI Search → Foundry: OpenAI User（埋め込みスキルが Embedding API を呼ぶ）
 resource searchToFoundry 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(search.id, foundry.id, roles.cognitiveServicesOpenAIUser)
+  name: guid(search.id, foundry.id, roles.azureAIUser)
   scope: foundry
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roles.cognitiveServicesOpenAIUser)
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roles.azureAIUser)
     principalId: search.identity.principalId
     principalType: 'ServicePrincipal'
   }
@@ -216,10 +216,10 @@ resource searchToFoundry 'Microsoft.Authorization/roleAssignments@2022-04-01' = 
 
 // App Service → Foundry: OpenAI User（Responses API 呼び出し）
 resource appToFoundry 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployAppService) {
-  name: guid('${prefix}-app', foundry.id, roles.cognitiveServicesOpenAIUser)
+  name: guid('${prefix}-app', foundry.id, roles.azureAIUser)
   scope: foundry
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roles.cognitiveServicesOpenAIUser)
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roles.azureAIUser)
     principalId: deployAppService ? app.identity.principalId : ''
     principalType: 'ServicePrincipal'
   }
@@ -298,10 +298,10 @@ resource funcToSearch 'Microsoft.Authorization/roleAssignments@2022-04-01' = if 
 
 // User → Foundry: OpenAI User
 resource userToFoundry 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (userPrincipalId != '') {
-  name: guid(userPrincipalId, foundry.id, roles.cognitiveServicesOpenAIUser)
+  name: guid(userPrincipalId, foundry.id, roles.azureAIUser)
   scope: foundry
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roles.cognitiveServicesOpenAIUser)
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roles.azureAIUser)
     principalId: userPrincipalId
     principalType: 'User'
   }

@@ -69,11 +69,11 @@ SEARCH_ID=$(az resource show \
     --name "${PREFIX}-search" \
     --query id -o tsv)
 
-# App → Foundry: Cognitive Services OpenAI User
+# App → Foundry: Azure AI User
 az role assignment create \
     --assignee-object-id "$PRINCIPAL_ID" \
     --assignee-principal-type ServicePrincipal \
-    --role "Cognitive Services OpenAI User" \
+    --role "Azure AI User" \
     --scope "$FOUNDRY_ID" \
     --output none 2>/dev/null || true
 
