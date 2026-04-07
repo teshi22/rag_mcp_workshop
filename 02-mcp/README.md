@@ -1,3 +1,5 @@
+# MCPについてはコンテンツ作成中
+
 # 02 — MCP 編
 
 01-rag のアプリを MCP（Model Context Protocol）対応に更新し、Azure Functions で MCP サーバーをデプロイします。

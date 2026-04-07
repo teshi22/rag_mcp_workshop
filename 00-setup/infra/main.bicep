@@ -66,7 +66,7 @@ resource chatDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025-0
   name: chatModelName
   sku: {
     name: 'GlobalStandard'
-    capacity: 10
+    capacity: 200
   }
   properties: {
     model: {
@@ -83,7 +83,7 @@ resource embeddingDeployment 'Microsoft.CognitiveServices/accounts/deployments@2
   dependsOn: [chatDeployment]
   sku: {
     name: 'Standard'
-    capacity: 10
+    capacity: 200
   }
   properties: {
     model: {
@@ -100,11 +100,11 @@ resource embeddingDeployment 'Microsoft.CognitiveServices/accounts/deployments@2
 resource search 'Microsoft.Search/searchServices@2024-06-01-preview' = {
   name: '${prefix}-search'
   location: location
-  sku: { name: 'free' }
+  sku: { name: 'basic' }
   identity: { type: 'SystemAssigned' }
   properties: {
     hostingMode: 'default'
-    semanticSearch: 'free'
+    semanticSearch: 'standard'
     publicNetworkAccess: 'enabled'
     authOptions: {
       aadOrApiKey: {
