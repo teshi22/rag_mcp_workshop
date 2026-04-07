@@ -47,7 +47,37 @@ graph TB
 - 🔵 青 = 共有リソース（管理者がデプロイ）
 - 🟠 オレンジ = 受講生ごとに作成
 
-## 1. 環境変数の設定
+## 1. 認証の設定
+
+本ワークショップでは API キーを使わず、すべて Microsoft Entra ID（`DefaultAzureCredential`）で認証します。
+
+### ローカル開発
+
+Azure CLI でログインしてください。
+
+```bash
+az login
+```
+
+管理者が各受講生に以下のロールを割り当てている必要があります。
+
+| 対象リソース | ロール | 用途 |
+|-------------|--------|------|
+| Microsoft Foundry | Azure AI User | GPT-4.1 / Embedding API の呼び出し |
+| Azure Blob Storage | Storage Blob Data Contributor | ドキュメントのアップロード |
+| Azure AI Search | Search Service Contributor | インデックス・インデクサーの作成 |
+| Azure AI Search | Search Index Data Contributor | インデックスデータの書き込み |
+
+### Azure デプロイ
+
+App Service にはシステム割り当てマネージド ID が自動で有効化され、デプロイスクリプトが以下のロールを割り当てます。
+
+| 対象リソース | ロール | 用途 |
+|-------------|--------|------|
+| Microsoft Foundry | Cognitive Services OpenAI User | Responses API の呼び出し |
+| Azure AI Search | Search Index Data Reader | 検索クエリの実行 |
+
+## 2. 環境変数の設定
 
 リポジトリルートに `.env` ファイルを作成し、以下の値を設定してください。
 インフラ共通の値は管理者から提供されます。`AZURE_SEARCH_INDEX` は **受講生ごとにユニークな値** を設定してください。
@@ -116,8 +146,9 @@ bash 01-rag/deploy.sh
 
 1. 共有の App Service Plan を作成（初回のみ）
 2. 受講生ごとの Web App `<prefix>-<student-id>-app` を作成
-3. `.env` の設定値をアプリ設定に反映
-4. アプリコードを zip デプロイ
+3. システム割り当てマネージド ID を有効化し、Foundry・AI Search への RBAC を割り当て
+4. `.env` の設定値をアプリ設定に反映
+5. アプリコードを zip デプロイ
 
 デプロイ完了後、`https://<prefix>-<student-id>-app.azurewebsites.net` でアクセスできます。
 

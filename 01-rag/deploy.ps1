@@ -58,6 +58,39 @@ az webapp create `
     --runtime "PYTHON:3.11" `
     --output none
 
+Write-Host "🔑 マネージド ID を有効化し RBAC を割り当て..."
+$PrincipalId = az webapp identity assign `
+    --resource-group $ResourceGroup `
+    --name $AppName `
+    --query principalId -o tsv
+
+$FoundryId = az cognitiveservices account show `
+    --resource-group $ResourceGroup `
+    --name "$Prefix-ai" `
+    --query id -o tsv
+
+$SearchId = az resource show `
+    --resource-group $ResourceGroup `
+    --resource-type "Microsoft.Search/searchServices" `
+    --name "$Prefix-search" `
+    --query id -o tsv
+
+# App → Foundry: Cognitive Services OpenAI User
+az role assignment create `
+    --assignee-object-id $PrincipalId `
+    --assignee-principal-type ServicePrincipal `
+    --role "Cognitive Services OpenAI User" `
+    --scope $FoundryId `
+    --output none 2>$null
+
+# App → AI Search: Search Index Data Reader
+az role assignment create `
+    --assignee-object-id $PrincipalId `
+    --assignee-principal-type ServicePrincipal `
+    --role "Search Index Data Reader" `
+    --scope $SearchId `
+    --output none 2>$null
+
 Write-Host "⚙️  アプリ設定を反映..."
 az webapp config appsettings set `
     --resource-group $ResourceGroup `
