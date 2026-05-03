@@ -41,7 +41,7 @@ graph TB
     style Foundry fill:#d6e4ff,stroke:#4a7dff,color:#000
     style StorageAccount fill:#d6e4ff,stroke:#4a7dff,color:#000
     style SearchService fill:#d6e4ff,stroke:#4a7dff,color:#000
-    style AppServicePlan fill:#d6e4ff,stroke:#4a7dff,color:#000
+    style AppServicePlan fill:#ffd6a5,stroke:#e8890c,color:#000
 ```
 
 - 🔵 青 = 共有リソース（管理者がデプロイ）
@@ -88,7 +88,7 @@ cp .env.sample .env
 
 | 変数 | 説明 | 備考 |
 |------|------|------|
-| `AZURE_OPENAI_ENDPOINT` | Foundry のエンドポイント | 管理者から提供 |
+| `AZURE_OPENAI_ENDPOINT` | Foundry の Azure OpenAI のエンドポイント | 管理者から提供 |
 | `AZURE_OPENAI_MODEL` | チャットモデルのデプロイ名 | 管理者から提供 |
 | `AZURE_OPENAI_EMBEDDING_MODEL` | Embedding モデルのデプロイ名 | 管理者から提供 |
 | `AZURE_SEARCH_ENDPOINT` | AI Search のエンドポイント | 管理者から提供 |
@@ -144,7 +144,7 @@ bash 01-rag/deploy.sh
 
 デプロイスクリプトは以下を実行します:
 
-1. 共有の App Service Plan を作成（初回のみ）
+1. 受講生ごとの App Service Plan を作成（既存の場合はスキップ）
 2. 受講生ごとの Web App `<prefix>-<student-id>-app` を作成
 3. システム割り当てマネージド ID を有効化し、Foundry・AI Search への RBAC を割り当て
 4. `.env` の設定値をアプリ設定に反映
