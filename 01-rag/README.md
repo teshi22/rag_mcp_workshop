@@ -20,7 +20,7 @@ graph TB
             Index["rag-index-&lt;student-id&gt;"]:::per_student
         end
 
-        subgraph AppServicePlan["App Service Plan（&lt;prefix&gt;-plan / Linux B1）"]
+        subgraph AppServicePlan["App Service Plan（&lt;prefix&gt;-&lt;student-id&gt;-plan / Linux B1）"]
             WebApp["Web App<br/>&lt;prefix&gt;-&lt;student-id&gt;-app<br/>Python 3.11 / Streamlit"]:::per_student
         end
     end

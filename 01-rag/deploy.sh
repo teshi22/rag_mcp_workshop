@@ -28,7 +28,7 @@ set +a
 : "${AZURE_SEARCH_ENDPOINT:?❌ .env に AZURE_SEARCH_ENDPOINT を設定してください}"
 
 APP_NAME="${PREFIX}-${STUDENT_ID}-app"
-PLAN_NAME="${PREFIX}-plan"
+PLAN_NAME="${PREFIX}-${STUDENT_ID}-plan"  # "${PREFIX}-plan" から変更（受講生ごとに App Service Plan を分けるため）
 
 echo "=== デプロイ設定 ==="
 echo "RESOURCE_GROUP: $AZURE_RESOURCE_GROUP"

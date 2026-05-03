@@ -28,7 +28,7 @@ graph TB
             Index["rag-index-&lt;student-id&gt;"]:::per_student
         end
 
-        subgraph AppServicePlan["App Service Plan（&lt;prefix&gt;-plan / Linux B1）"]
+        subgraph AppServicePlan["App Service Plan（&lt;prefix&gt;-&lt;student-id&gt;-plan / Linux B1）"]
             WebApp["Web App<br/>&lt;prefix&gt;-&lt;student-id&gt;-app<br/>Python 3.11 / Streamlit"]:::per_student
         end
 
@@ -57,7 +57,7 @@ graph TB
     style Foundry fill:#d6e4ff,stroke:#4a7dff,color:#000
     style StorageAccount fill:#d6e4ff,stroke:#4a7dff,color:#000
     style SearchService fill:#d6e4ff,stroke:#4a7dff,color:#000
-    style AppServicePlan fill:#d6e4ff,stroke:#4a7dff,color:#000
+    style AppServicePlan fill:#ffd6a5,stroke:#e8890c,color:#000
     style FuncPlan fill:#d6e4ff,stroke:#4a7dff,color:#000
 ```
 
