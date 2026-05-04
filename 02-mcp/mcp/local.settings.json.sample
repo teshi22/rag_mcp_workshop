@@ -1,0 +1,10 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "",
+    "AzureWebJobsSecretStorageType": "Files",
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+    "AZURE_SEARCH_ENDPOINT": "https://<prefix>-search.search.windows.net",
+    "AZURE_SEARCH_INDEX": "rag-index-<student-id>"
+  }
+}
