@@ -152,11 +152,16 @@ bash 01-rag/deploy.sh
 
 ### デプロイされるリソースの構成
 
+| リソース種別 | リソース名 | 備考 |
+|------|-----|------|
+| App Service Plan | `<prefix>-<student-id>-plan` | Linux B1 |
+| Web App | `<prefix>-<student-id>-app` | Python 3.11 / Streamlit |
+
+### Web App の主な設定
+
 | 項目 | 値 |
 |------|-----|
-| App Service Plan SKU | B1 (Basic, Linux) |
 | ランタイム | Python 3.11 |
-| Web App 名 | `<prefix>-<student-id>-app` |
 | 認証 | システム割り当てマネージド ID |
 | スタートアップ コマンド | `pip install -r app/requirements.txt && python -m streamlit run app/app.py --server.port 8000 --server.address 0.0.0.0` |
 
