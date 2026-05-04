@@ -56,7 +56,16 @@ az storage account create `
     --sku Standard_LRS `
     --kind StorageV2 `
     --allow-shared-key-access false `
+    --public-network-access Enabled `
     --output none 2>$null
+
+Write-Host "🌐 Storage のパブリック網経由アクセスを許可..."
+az storage account update `
+    --resource-group $ResourceGroup `
+    --name $FuncStorage `
+    --public-network-access Enabled `
+    --default-action Allow `
+    --output none
 
 $StorageId = az storage account show `
     --resource-group $ResourceGroup `

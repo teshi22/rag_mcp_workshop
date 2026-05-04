@@ -50,7 +50,16 @@ az storage account create \
     --sku Standard_LRS \
     --kind StorageV2 \
     --allow-shared-key-access false \
+    --public-network-access Enabled \
     --output none 2>/dev/null || true
+
+echo "🌐 Storage のパブリック網経由アクセスを許可..."
+az storage account update \
+    --resource-group "$AZURE_RESOURCE_GROUP" \
+    --name "$FUNC_STORAGE" \
+    --public-network-access Enabled \
+    --default-action Allow \
+    --output none
 
 STORAGE_ID=$(az storage account show \
     --resource-group "$AZURE_RESOURCE_GROUP" \
