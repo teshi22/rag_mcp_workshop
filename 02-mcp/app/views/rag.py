@@ -24,7 +24,7 @@ search_client = SearchClient(
 # 検索 & 回答生成の関数
 # *******************************************************************************
 
-# 検索用の関数
+# ドキュメントを検索する関数
 def search(query: str, top_k: int = 3) -> list[dict]:
     """
     Azure AI Search でハイブリッド検索（キーワード + ベクトル） + セマンティックリランカーを実行する。
@@ -60,7 +60,7 @@ def search(query: str, top_k: int = 3) -> list[dict]:
     return docs
 
 
-#  回答生成用の関数
+# 検索結果を踏まえて回答をストリーミング生成する関数
 def generate_answer(
     question: str,
     context_docs: list[dict],
@@ -111,7 +111,7 @@ st.title("📚 RAG デモ")
 st.caption("Azure AI Search × Responses API による検索拡張生成")
 
 if st.sidebar.button("🗑️ 会話履歴をリセット"):
-    st.session_state.messages = []
+    st.session_state.rag_messages = []
     st.rerun()
 
 SAMPLE_QUESTIONS = [
@@ -122,19 +122,21 @@ SAMPLE_QUESTIONS = [
 ]
 
 # チャット履歴
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+if "rag_messages" not in st.session_state:
+    st.session_state.rag_messages = []
 
 # 会話が空のときだけサンプル質問を表示
-if not st.session_state.messages:
-    st.markdown("##### 💡 サンプル質問（クリックで実行）")
-    cols = st.columns(2)
-    for i, q in enumerate(SAMPLE_QUESTIONS):
-        if cols[i % 2].button(q, key=f"sample_{i}", use_container_width=True):
-            st.session_state.pending_question = q
-            st.rerun()
+sample_placeholder = st.empty()
+if not st.session_state.rag_messages:
+    with sample_placeholder.container():
+        st.markdown("##### 💡 サンプル質問（クリックで実行）")
+        cols = st.columns(2)
+        for i, q in enumerate(SAMPLE_QUESTIONS):
+            if cols[i % 2].button(q, key=f"rag_sample_{i}", use_container_width=True):
+                st.session_state.rag_pending_question = q
+                st.rerun()
 
-for msg in st.session_state.messages:
+for msg in st.session_state.rag_messages:
     if msg["role"] == "user":
         with st.chat_message("user"):
             st.markdown(msg["content"])
@@ -153,18 +155,20 @@ for msg in st.session_state.messages:
 
 # サンプル質問ボタンまたはチャット入力から質問を取得
 question = st.chat_input("質問を入力してください")
-if not question and st.session_state.get("pending_question"):
-    question = st.session_state.pop("pending_question")
+if not question and st.session_state.get("rag_pending_question"):
+    question = st.session_state.pop("rag_pending_question")
 
 if question:
-    st.session_state.messages.append({"role": "user", "content": question})
+    sample_placeholder.empty()
+
+    st.session_state.rag_messages.append({"role": "user", "content": question})
     with st.chat_message("user"):
         st.markdown(question)
 
     # 過去の会話履歴を構築（直近のユーザー質問は含めない）
     history = [
         {"role": msg["role"], "content": msg["content"]}
-        for msg in st.session_state.messages[:-1]
+        for msg in st.session_state.rag_messages[:-1]
     ]
 
     with st.spinner("🔍 検索中..."):
@@ -181,6 +185,6 @@ if question:
             generate_answer(question, docs, history)
         )
 
-    st.session_state.messages.append(
+    st.session_state.rag_messages.append(
         {"role": "assistant", "content": response_text, "search_docs": docs}
     )

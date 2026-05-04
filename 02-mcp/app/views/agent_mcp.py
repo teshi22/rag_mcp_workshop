@@ -26,7 +26,7 @@ MCP_SERVERS = {
 # 非同期実行ヘルパー
 # *******************************************************************************
 
-# 同期コードから async コルーチンを実行
+# 同期コードから async コルーチンを実行する関数
 def run_async(coro: Coroutine) -> Any:
     """
     Streamlit (同期) から async コルーチンを実行する。
@@ -48,7 +48,7 @@ def run_async(coro: Coroutine) -> Any:
 # MCP ツール連携（取得・実行・変換）
 # *******************************************************************************
 
-# 1 つの MCP サーバーからツール一覧を取得
+# 1 つの MCP サーバーからツール一覧を取得する関数
 async def fetch_mcp_tools_from(url: str) -> list[Tool]:
     """
     単一の MCP サーバーに接続してツール一覧を取得する。
@@ -66,7 +66,7 @@ async def fetch_mcp_tools_from(url: str) -> list[Tool]:
             return result.tools
 
 
-# 全 MCP サーバーのツールを集約し、ツール名→サーバーの対応表も返す
+# 全 MCP サーバーからツールを集めて一覧とツール名→サーバーの対応表を返す関数
 async def fetch_all_mcp_tools() -> tuple[list[Tool], dict[str, dict]]:
     """
     MCP_SERVERS に定義された全サーバーからツールを取得して集約する。
@@ -87,7 +87,7 @@ async def fetch_all_mcp_tools() -> tuple[list[Tool], dict[str, dict]]:
     return all_tools, tool_to_server
 
 
-# 指定した MCP ツールを呼び出して結果を取得
+# 指定した MCP ツールを呼び出して結果を取得する関数
 async def call_mcp_tool_async(
     server_url: str, tool_name: str, arguments: dict
 ) -> CallToolResult:
@@ -109,7 +109,7 @@ async def call_mcp_tool_async(
             return result
 
 
-# MCP ツール定義を Responses API の function tools 形式に変換
+# MCP ツール定義を Responses API の function tools 形式に変換する関数
 def mcp_tools_to_openai(mcp_tools: list[Tool]) -> list[dict]:
     """
     MCP の Tool 定義を Responses API に渡せる function tools 形式に変換する。
@@ -136,18 +136,18 @@ def mcp_tools_to_openai(mcp_tools: list[Tool]) -> list[dict]:
 # エージェントループ
 # *******************************************************************************
 
-# ツール呼び出しを繰り返しながら回答を生成
+# ツール呼び出しを繰り返しながら回答をストリーミング生成する関数
 def agent_answer(
     question: str,
     openai_tools: list[dict],
     tool_to_server: dict[str, dict],
     history: list[dict],
-) -> tuple[str, list[dict]]:
+):
     """
     Responses API + MCP ツールによるエージェントループ。
 
     LLM がツール呼び出しを返す限り MCP ツールを実行し、結果を LLM に返して
-    最終的なテキスト回答が得られるまで繰り返す。
+    最終的なテキスト回答が得られるまで繰り返す。途中経過をイベントとして yield する。
 
     Args:
         question: ユーザーの質問。
@@ -155,9 +155,11 @@ def agent_answer(
         tool_to_server: ツール名 → {"url":..., "label":...} の対応表。
         history: 過去の会話履歴（直近のユーザー質問は含めない）。
 
-    Returns:
-        (最終回答テキスト, ツール呼び出しログのリスト) のタプル。
-        ログの各要素は {"name": str, "arguments": dict, "server": str}。
+    Yields:
+        (kind, payload) のタプル。kind は以下の 3 種類:
+            - "tool_call": ツール呼び出し情報 {"name": str, "arguments": dict, "server": str}
+            - "tool_result": ツール実行結果 {"name": str, "content": str}
+            - "text_delta": ストリーミングされる回答テキストのデルタ (str)
     """
     system_prompt = """あなたは社内ドキュメントと Microsoft 公式ドキュメントの両方を活用して回答するアシスタントです。
 
@@ -177,31 +179,49 @@ def agent_answer(
     input_messages.extend(history)
     input_messages.append({"role": "user", "content": question})
 
-    response = openai_client.responses.create(
+    # 初回リクエスト
+    stream = openai_client.responses.create(
         model=AZURE_OPENAI_MODEL,
         tools=openai_tools,
         input=input_messages,
+        stream=True,
     )
 
-    tool_calls_log = []
-
     # ツール呼び出しが続く限りループ
-    while any(item.type == "function_call" for item in response.output):
+    while True:
+        function_calls = []
+        response_id = None
+        for event in stream:
+            if event.type == "response.output_text.delta":
+                yield ("text_delta", event.delta)
+            elif event.type == "response.completed":
+                response_id = event.response.id
+                function_calls = [
+                    item
+                    for item in event.response.output
+                    if item.type == "function_call"
+                ]
+
+        # ツール呼び出しがなければ完了
+        if not function_calls:
+            return
+
+        # ツールを実行して結果を集める
         tool_results = []
-        for item in response.output:
-            if item.type != "function_call":
-                continue
+        for item in function_calls:
             args = json.loads(item.arguments)
             server_info = tool_to_server.get(item.name, {})
             server_url = server_info.get("url", "")
             server_label = server_info.get("label", "")
-            tool_calls_log.append(
-                {"name": item.name, "arguments": args, "server": server_label}
+            yield (
+                "tool_call",
+                {"name": item.name, "arguments": args, "server": server_label},
             )
             result = run_async(call_mcp_tool_async(server_url, item.name, args))
             content_text = "\n".join(
                 c.text for c in result.content if hasattr(c, "text")
             )
+            yield ("tool_result", {"name": item.name, "content": content_text})
             tool_results.append(
                 {
                     "type": "function_call_output",
@@ -210,25 +230,61 @@ def agent_answer(
                 }
             )
 
-        response = openai_client.responses.create(
+        # ツール結果を返して次のリクエストへ
+        stream = openai_client.responses.create(
             model=AZURE_OPENAI_MODEL,
             tools=openai_tools,
-            previous_response_id=response.id,
+            previous_response_id=response_id,
             input=tool_results,
+            stream=True,
         )
-
-    return response.output_text, tool_calls_log
 
 
 # *******************************************************************************
 # Streamlit UI 
 # *******************************************************************************
 
-st.title("📚 RAG デモ")
+# ツール実行結果を読みやすい形で表示する関数
+def render_tool_result(content_text: str) -> None:
+    """
+    MCP ツールの返り値を可能ならドキュメント一覧として表示する。
+
+    JSON としてパースでき、title/content の並びだと見なせる場合は
+    RAG モードの検索結果と同じスタイルで表示し、それ以外は
+    コードブロックとして表示する。
+    """
+    try:
+        data = json.loads(content_text)
+    except (json.JSONDecodeError, TypeError):
+        st.code(content_text[:1000] + ("..." if len(content_text) > 1000 else ""))
+        return
+
+    # {"results": [...]} の形式は results の中身を見る
+    if isinstance(data, dict) and isinstance(data.get("results"), list):
+        data = data["results"]
+
+    if isinstance(data, list) and data and all(
+        isinstance(d, dict) and ("title" in d or "content" in d) for d in data
+    ):
+        for d in data:
+            title = d.get("title", "(no title)")
+            content = d.get("content", "")
+            url = d.get("contentUrl") or d.get("url")
+            if url:
+                st.markdown(f"**[{title}]({url})**")
+            else:
+                st.markdown(f"**{title}**")
+            st.markdown(content[:300] + ("..." if len(content) > 300 else ""))
+        return
+
+    st.json(data, expanded=False)
+
+
+st.title("📚 AI エージェント + MCP")
 st.caption("AI エージェントが MCP ツールを使って回答を生成")
 
 if st.sidebar.button("🗑️ 会話履歴をリセット"):
-    st.session_state.messages = []
+    st.session_state.agent_messages = []
     st.rerun()
 
 # MCP ツール一覧を取得（初回のみ）
@@ -258,83 +314,128 @@ SAMPLE_QUESTIONS = [
 ]
 
 # チャット履歴
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+if "agent_messages" not in st.session_state:
+    st.session_state.agent_messages = []
 
 # 会話が空のときだけサンプル質問を表示
-if not st.session_state.messages:
-    st.markdown("##### 💡 サンプル質問（クリックで実行）")
-    cols = st.columns(2)
-    for i, q in enumerate(SAMPLE_QUESTIONS):
-        if cols[i % 2].button(q, key=f"sample_{i}", use_container_width=True):
-            st.session_state.pending_question = q
-            st.rerun()
+sample_placeholder = st.empty()
+if not st.session_state.agent_messages:
+    with sample_placeholder.container():
+        st.markdown("##### 💡 サンプル質問（クリックで実行）")
+        cols = st.columns(2)
+        for i, q in enumerate(SAMPLE_QUESTIONS):
+            if cols[i % 2].button(q, key=f"agent_sample_{i}", use_container_width=True):
+                st.session_state.agent_pending_question = q
+                st.rerun()
 
-for msg in st.session_state.messages:
+for msg in st.session_state.agent_messages:
     if msg["role"] == "user":
         with st.chat_message("user"):
             st.markdown(msg["content"])
     elif msg["role"] == "assistant":
-        if msg.get("tool_calls"):
-            tcs = msg["tool_calls"]
-            with st.expander(
-                f"🔧 ツール呼び出し（{len(tcs)}回）", expanded=False
-            ):
-                for tc in tcs:
-                    server = tc.get("server", "")
-                    label = f" ({server})" if server else ""
-                    st.markdown(
-                        f"**{tc['name']}**{label} "
-                        f"`{json.dumps(tc['arguments'], ensure_ascii=False)}`"
-                    )
-                    st.divider()
         with st.chat_message("assistant"):
-            st.markdown(msg["content"])
+            # ツール呼び出しと回答テキストを出現順に表示
+            for seg in msg.get("segments", []):
+                if seg["type"] == "tools":
+                    tools = seg["data"]
+                    with st.expander(
+                        f"🔧 ツール呼び出し（{len(tools)}件）", expanded=False
+                    ):
+                        for tc in tools:
+                            server = tc.get("server", "")
+                            label = f" ({server})" if server else ""
+                            st.markdown(
+                                f"**{tc['name']}**{label} "
+                                f"`{json.dumps(tc['arguments'], ensure_ascii=False)}`"
+                            )
+                            if tc.get("result"):
+                                render_tool_result(tc["result"])
+                            st.divider()
+                elif seg["type"] == "text":
+                    st.markdown(seg["content"])
 
 # サンプル質問ボタンまたはチャット入力から質問を取得
 question = st.chat_input("質問を入力してください")
-if not question and st.session_state.get("pending_question"):
-    question = st.session_state.pop("pending_question")
+if not question and st.session_state.get("agent_pending_question"):
+    question = st.session_state.pop("agent_pending_question")
 
 if question:
-    st.session_state.messages.append({"role": "user", "content": question})
+    sample_placeholder.empty()
+
+    st.session_state.agent_messages.append({"role": "user", "content": question})
     with st.chat_message("user"):
         st.markdown(question)
 
     # 過去の会話履歴を構築（直近のユーザー質問は含めない）
-    history = [
-        {"role": msg["role"], "content": msg["content"]}
-        for msg in st.session_state.messages[:-1]
-    ]
+    history = []
+    for msg in st.session_state.agent_messages[:-1]:
+        if msg["role"] == "user":
+            history.append({"role": "user", "content": msg["content"]})
+        elif msg["role"] == "assistant":
+            # アシスタントの回答テキスト部分だけを連結して LLM に渡す
+            text = "".join(
+                seg["content"]
+                for seg in msg.get("segments", [])
+                if seg["type"] == "text"
+            )
+            if text:
+                history.append({"role": "assistant", "content": text})
 
-    with st.spinner("🤖 エージェントが回答を生成中..."):
-        response_text, tool_calls = agent_answer(
+    # エージェントから順に返ってくる出力をそのまま上から表示し、同じ順番でチャット履歴に保存
+    segments = []
+    current_tools = []
+    tools_expander = None
+    text_buffer = ""
+    text_placeholder = None
+
+    with st.chat_message("assistant"):
+        for kind, payload in agent_answer(
             question,
             st.session_state.openai_tools,
             st.session_state.tool_to_server,
             history,
-        )
-
-    if tool_calls:
-        with st.expander(
-            f"🔧 ツール呼び出し（{len(tool_calls)}回）", expanded=False
         ):
-            for tc in tool_calls:
-                server = tc.get("server", "")
-                label = f" ({server})" if server else ""
-                st.markdown(
-                    f"**{tc['name']}**{label} "
-                    f"`{json.dumps(tc['arguments'], ensure_ascii=False)}`"
-                )
-                st.divider()
+            if kind == "tool_call":
+                # テキストを区切って、ツール呼び出し用の折りたたみブロックを開く
+                if text_buffer:
+                    segments.append({"type": "text", "content": text_buffer})
+                    text_buffer = ""
+                    text_placeholder = None
+                if tools_expander is None:
+                    current_tools = []
+                    tools_expander = st.expander("🔧 ツール呼び出し", expanded=False)
+                with tools_expander:
+                    server = payload.get("server", "")
+                    label = f" ({server})" if server else ""
+                    st.markdown(
+                        f"**{payload['name']}**{label} "
+                        f"`{json.dumps(payload['arguments'], ensure_ascii=False)}`"
+                    )
+                current_tools.append({**payload, "result": None})
+            elif kind == "tool_result":
+                # 直前のツール呼び出しに結果を紐づけて表示
+                if current_tools:
+                    current_tools[-1]["result"] = payload["content"]
+                    with tools_expander:
+                        render_tool_result(payload["content"])
+                        st.divider()
+            elif kind == "text_delta":
+                # 同じテキストブロックに文字を追加しながら表示
+                if current_tools:
+                    segments.append({"type": "tools", "data": current_tools})
+                    current_tools = []
+                    tools_expander = None
+                if text_placeholder is None:
+                    text_placeholder = st.empty()
+                text_buffer += payload
+                text_placeholder.markdown(text_buffer)
 
-    with st.chat_message("assistant"):
-        st.markdown(response_text)
+        # 最後に残っているブロックをチャット履歴に保存
+        if current_tools:
+            segments.append({"type": "tools", "data": current_tools})
+        if text_buffer:
+            segments.append({"type": "text", "content": text_buffer})
 
-    st.session_state.messages.append(
-        {
-            "role": "assistant",
-            "content": response_text,
-            "tool_calls": tool_calls,
-        }
+    st.session_state.agent_messages.append(
+        {"role": "assistant", "segments": segments}
     )
